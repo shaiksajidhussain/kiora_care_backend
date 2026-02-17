@@ -2,29 +2,34 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Resend } from 'resend';
 
 function setCorsHeaders(res: VercelResponse, origin: string | undefined) {
-  const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
+  const allowedOrigins = [
+    'http://localhost:8080',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://kiora-care.vercel.app',
+    'https://kiora-care-backend.vercel.app',
+    'https://www.kiora.care',
+    'https://kiora.care'
+  ];
   
-  // Always set a valid origin value
+  const envOrigins = process.env.ALLOWED_ORIGIN 
+    ? (process.env.ALLOWED_ORIGIN === '*' ? ['*'] : process.env.ALLOWED_ORIGIN.split(',').map(o => o.trim()))
+    : [];
+  
+  const allOrigins = [...allowedOrigins, ...envOrigins];
+  const requestOrigin = origin ? origin.trim() : '';
+  
   let originToUse: string;
   
-  if (allowedOrigin === '*') {
+  if (allOrigins.includes('*')) {
     // If wildcard is allowed, use the request origin if present, otherwise use '*'
-    originToUse = origin ? origin.trim() : '*';
+    originToUse = requestOrigin || '*';
+  } else if (requestOrigin && allOrigins.includes(requestOrigin)) {
+    originToUse = requestOrigin;
+  } else if (allOrigins.length > 0) {
+    originToUse = allOrigins[0];
   } else {
-    // Support multiple origins separated by comma
-    const allowedOrigins = allowedOrigin.split(',').map(o => o.trim());
-    const requestOrigin = origin ? origin.trim() : '';
-    
-    // Check if the request origin matches any allowed origin
-    if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
-      originToUse = requestOrigin;
-    } else if (allowedOrigins.length === 1) {
-      // Single origin - use it
-      originToUse = allowedOrigins[0];
-    } else {
-      // Default to first allowed origin if no match
-      originToUse = allowedOrigins[0];
-    }
+    originToUse = '*';
   }
   
   // Ensure no invalid characters (newlines, carriage returns)
@@ -32,7 +37,8 @@ function setCorsHeaders(res: VercelResponse, origin: string | undefined) {
   
   res.setHeader('Access-Control-Allow-Origin', originToUse);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
 }
 
 export default async function handler(

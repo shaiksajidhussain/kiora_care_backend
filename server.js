@@ -10,11 +10,34 @@ const PORT = process.env.PORT || 3001;
 // Base URL for testing (e.g. http://localhost:3001). Used in health response and for reference.
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
-// Middleware
+// Middleware - CORS configuration
+const allowedOrigins = process.env.ALLOWED_ORIGIN 
+  ? process.env.ALLOWED_ORIGIN.split(',').map(o => o.trim())
+  : [
+      'http://localhost:8080',
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://kiora-care.vercel.app',
+      'https://kiora-care-backend.vercel.app',
+      'https://www.kiora.care',
+      'https://kiora.care'
+    ];
+
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGIN || '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 app.use(express.json());
 
