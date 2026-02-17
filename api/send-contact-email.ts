@@ -150,13 +150,18 @@ export default async function handler(
         } catch (e: any) {
           if (e.code !== '42701') throw e; // Ignore if column already exists
         }
+        try {
+          await pool.query('ALTER TABLE form_submissions ADD COLUMN map_location TEXT');
+        } catch (e: any) {
+          if (e.code !== '42701') throw e; // Ignore if column already exists
+        }
         
         const insertQuery = `
           INSERT INTO form_submissions (
             form_type, user_type, full_name, email_address, phone_number, gender,
             address, city, state, pincode, message, selected_plan, agree_to_contact,
-            scheduled_date, scheduled_time
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            scheduled_date, scheduled_time, map_location
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
           RETURNING id
         `;
         const result = await pool.query(insertQuery, [
@@ -174,7 +179,8 @@ export default async function handler(
           body.selectedPlan || null,
           body.agreeToContact || false,
           body.scheduledDate || null,
-          body.scheduledTime || null
+          body.scheduledTime || null,
+          body.mapLocation || null
         ]);
         dbRecordId = result.rows[0].id;
         console.log('✅ Form submission saved to database with ID:', dbRecordId);
