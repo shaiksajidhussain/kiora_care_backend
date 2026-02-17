@@ -188,10 +188,22 @@ export default async function handler(
     const safePhone = escapeHtml(body.phoneNumber);
     const safeEmail = escapeHtml(body.emailAddress);
     const safeCity = escapeHtml(body.city) || 'Not provided';
+    const safeState = escapeHtml(body.state) || 'Not provided';
     const safePincode = escapeHtml(body.pincode) || 'Not provided';
+    const safeAddress = escapeHtml(body.address) || 'Not provided';
     const safeMessage = body.message ? escapeHtml(body.message).replace(/\n/g, '<br>') : 'No message provided';
+    const safeGender = body.gender ? escapeHtml(body.gender).charAt(0).toUpperCase() + escapeHtml(body.gender).slice(1).replace(/-/g, ' ') : null;
 
-    const htmlContent = 
+    const emailSubject = formType === 'schedule-test'
+      ? 'Schedule a test request - Kiora Website'
+      : 'New Contact Form Submission from Kiora Website';
+
+    const confirmationSubject = formType === 'schedule-test'
+      ? 'Thank you for scheduling your test with Kiora Care'
+      : 'Thank you for contacting Kiora Care';
+
+    // Generate notification email HTML (to business)
+    const notificationHtml = 
       '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
       'body{font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px}' +
       '.header{background-color:#1190ff;color:white;padding:20px;border-radius:8px 8px 0 0;text-align:center}' +
@@ -202,42 +214,109 @@ export default async function handler(
       '.value{color:#333}' +
       '.message-box{background-color:white;padding:15px;border-left:4px solid #1190ff;margin-top:10px}' +
       '</style></head><body>' +
-      '<div class="header"><h1>New Contact Form Submission</h1><p>Kiora Website</p></div>' +
+      '<div class="header"><h1>' + (formType === 'schedule-test' ? 'Schedule a test request' : 'New Contact Form Submission') + '</h1><p>Kiora Website</p></div>' +
       '<div class="content">' +
       '<div class="field"><span class="label">User Type:</span><span class="value">' + userTypeLabel + '</span></div>' +
       '<div class="field"><span class="label">Full Name:</span><span class="value">' + safeFullName + '</span></div>' +
       '<div class="field"><span class="label">Phone Number:</span><span class="value">' + safePhone + '</span></div>' +
       '<div class="field"><span class="label">Email Address:</span><span class="value">' + safeEmail + '</span></div>' +
+      (safeGender ? '<div class="field"><span class="label">Gender:</span><span class="value">' + safeGender + '</span></div>' : '') +
+      '<div class="field"><span class="label">Address:</span><span class="value">' + safeAddress + '</span></div>' +
       '<div class="field"><span class="label">City:</span><span class="value">' + safeCity + '</span></div>' +
+      '<div class="field"><span class="label">State:</span><span class="value">' + safeState + '</span></div>' +
       '<div class="field"><span class="label">Pincode:</span><span class="value">' + safePincode + '</span></div>' +
+      (body.selectedPlan ? '<div class="field"><span class="label">Selected Plan:</span><span class="value">' + (body.selectedPlan === 'one-time' ? 'Essential (One time test) - ₹999' : body.selectedPlan === '90-days' ? 'Signature (90 Days plan) - ₹3,999' : escapeHtml(body.selectedPlan)) + '</span></div>' : '') +
       '<div class="field"><span class="label">Message:</span><div class="message-box">' + safeMessage + '</div></div>' +
       '<div class="field"><span class="label">Agreed to Contact:</span><span class="value">' + (body.agreeToContact ? 'Yes' : 'No') + '</span></div>' +
       '</div></body></html>';
 
+    // Generate confirmation email HTML (to sender)
+    const planInfo = body.selectedPlan === 'one-time'
+      ? '<div style="background-color:#e8f5e9;padding:15px;border-radius:8px;margin:15px 0;"><strong>Selected Plan:</strong> Essential (One time test) - ₹999</div>'
+      : body.selectedPlan === '90-days'
+      ? '<div style="background-color:#e3f2fd;padding:15px;border-radius:8px;margin:15px 0;"><strong>Selected Plan:</strong> Signature (90 Days plan) - ₹3,999</div>'
+      : '';
+
+    const mainMessage = formType === 'schedule-test'
+      ? '<p>We\'ve received your test scheduling request and we\'re excited to help you on your health journey!</p><p>Our team will review your details and get back to you shortly to confirm your test date and time.</p>'
+      : '<p>Thank you for reaching out to Kiora Care! We\'ve received your message and our team will get back to you shortly.</p>';
+
+    const confirmationHtml = 
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
+      'body{font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px}' +
+      '.header{background-color:#1190ff;color:white;padding:30px;border-radius:8px 8px 0 0;text-align:center}' +
+      '.content{background-color:#f9f9f9;padding:30px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px}' +
+      '.message{color:#333;font-size:16px;margin-bottom:20px}' +
+      '.details{background-color:white;padding:20px;border-radius:8px;margin-top:20px;border-left:4px solid #1190ff}' +
+      '.footer{text-align:center;margin-top:30px;color:#666;font-size:14px}' +
+      '</style></head><body>' +
+      '<div class="header"><h1>Thank You, ' + safeFullName + '!</h1></div>' +
+      '<div class="content">' +
+      '<div class="message">' + mainMessage + '</div>' +
+      planInfo +
+      '<div class="details">' +
+      '<p style="margin-top:0"><strong>Your submission details:</strong></p>' +
+      '<p style="margin:5px 0">📧 Email: ' + safeEmail + '</p>' +
+      '<p style="margin:5px 0">📱 Phone: ' + safePhone + '</p>' +
+      (safeGender ? '<p style="margin:5px 0">👤 Gender: ' + safeGender + '</p>' : '') +
+      ((safeCity !== 'Not provided' || safeState !== 'Not provided') ? '<p style="margin:5px 0">📍 Location: ' + [safeCity, safeState].filter(v => v && v !== 'Not provided').join(', ') + (safePincode !== 'Not provided' ? ' - ' + safePincode : '') + '</p>' : '') +
+      '</div>' +
+      '<div class="footer">' +
+      '<p>Best regards,<br><strong>The Kiora Care Team</strong></p>' +
+      '<p style="margin-top:20px;font-size:12px">If you have any urgent questions, please contact us directly.</p>' +
+      '</div>' +
+      '</div></body></html>';
+
     try {
-      const emailResult = await resend.emails.send({
+      // Email 1: Send notification to business/team
+      const notificationResult = await resend.emails.send({
         from: 'Kiora Care <noreply@kiora.care>',
         to: targetEmail,
-        subject: 'New Contact Form Submission from Kiora Website',
-        html: htmlContent,
+        subject: emailSubject,
+        html: notificationHtml,
       });
 
-      if (emailResult.error) {
-        console.error('Resend API error:', JSON.stringify(emailResult.error, null, 2));
-        // Return error details for debugging
+      if (notificationResult.error) {
+        console.error('Resend API error (notification):', JSON.stringify(notificationResult.error, null, 2));
         return res.status(500).json({ 
-          error: 'Failed to send email',
-          details: emailResult.error,
-          message: emailResult.error?.message || 'Unknown Resend error'
+          error: 'Failed to send notification email',
+          details: notificationResult.error,
+          message: notificationResult.error?.message || 'Unknown Resend error'
         });
       }
 
-      console.log('Email sent successfully:', emailResult.data);
+      console.log('✅ Notification email sent:', notificationResult.data?.id);
+
+      // Email 2: Send confirmation to sender
+      const confirmationResult = await resend.emails.send({
+        from: 'Kiora Care <noreply@kiora.care>',
+        to: body.emailAddress,
+        subject: confirmationSubject,
+        html: confirmationHtml,
+      });
+
+      if (confirmationResult.error) {
+        console.warn('⚠️ Failed to send confirmation email:', confirmationResult.error);
+        // Don't fail the request if confirmation fails, just log it
+      } else {
+        console.log('✅ Confirmation email sent:', confirmationResult.data?.id);
+      }
+
       return res.status(200).json({ 
-        message: 'Email sent successfully', 
+        message: 'Emails sent successfully',
         data: {
           submissionId: dbRecordId,
-          email: emailResult.data
+          notification: {
+            id: notificationResult.data?.id,
+            to: targetEmail
+          },
+          confirmation: confirmationResult.error ? {
+            error: 'Failed to send confirmation email',
+            details: confirmationResult.error
+          } : {
+            id: confirmationResult.data?.id,
+            to: body.emailAddress
+          }
         }
       });
     } catch (resendError) {
