@@ -140,12 +140,23 @@ export default async function handler(
         } catch (e: any) {
           if (e.code !== '42701') throw e; // Ignore if column already exists
         }
+        try {
+          await pool.query('ALTER TABLE form_submissions ADD COLUMN scheduled_date DATE');
+        } catch (e: any) {
+          if (e.code !== '42701') throw e; // Ignore if column already exists
+        }
+        try {
+          await pool.query('ALTER TABLE form_submissions ADD COLUMN scheduled_time VARCHAR(20)');
+        } catch (e: any) {
+          if (e.code !== '42701') throw e; // Ignore if column already exists
+        }
         
         const insertQuery = `
           INSERT INTO form_submissions (
             form_type, user_type, full_name, email_address, phone_number, gender,
-            address, city, state, pincode, message, selected_plan, agree_to_contact
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            address, city, state, pincode, message, selected_plan, agree_to_contact,
+            scheduled_date, scheduled_time
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
           RETURNING id
         `;
         const result = await pool.query(insertQuery, [
@@ -161,7 +172,9 @@ export default async function handler(
           body.pincode || null,
           body.message || null,
           body.selectedPlan || null,
-          body.agreeToContact || false
+          body.agreeToContact || false,
+          body.scheduledDate || null,
+          body.scheduledTime || null
         ]);
         dbRecordId = result.rows[0].id;
         console.log('✅ Form submission saved to database with ID:', dbRecordId);

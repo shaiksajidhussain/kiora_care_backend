@@ -96,7 +96,7 @@ app.get('/api/admin/submissions', async (req, res) => {
   }
   try {
     const formType = req.query.form_type; // 'contact' | 'schedule-test' | omit for all
-    let query = 'SELECT id, form_type, user_type, full_name, email_address, phone_number, gender, address, city, state, pincode, message, selected_plan, agree_to_contact, created_at FROM form_submissions';
+    let query = 'SELECT id, form_type, user_type, full_name, email_address, phone_number, gender, address, city, state, pincode, message, selected_plan, agree_to_contact, scheduled_date, scheduled_time, created_at FROM form_submissions';
     const params = [];
     if (formType === 'contact' || formType === 'schedule-test') {
       query += ' WHERE form_type = $1';
@@ -337,6 +337,8 @@ const createTableIfNotExists = async () => {
     // Add state/address columns if table already existed without them (ignore if already exist)
     await pool.query('ALTER TABLE form_submissions ADD COLUMN state VARCHAR(255)').catch((err) => { if (err.code !== '42701') throw err; });
     await pool.query('ALTER TABLE form_submissions ADD COLUMN address VARCHAR(512)').catch((err) => { if (err.code !== '42701') throw err; });
+    await pool.query('ALTER TABLE form_submissions ADD COLUMN scheduled_date DATE').catch((err) => { if (err.code !== '42701') throw err; });
+    await pool.query('ALTER TABLE form_submissions ADD COLUMN scheduled_time VARCHAR(20)').catch((err) => { if (err.code !== '42701') throw err; });
     console.log('✅ Database table created/verified successfully');
   } catch (error) {
     console.error('❌ Error creating database table:', error.message);
@@ -400,8 +402,9 @@ app.post('/api/send-contact-email', async (req, res) => {
         const insertQuery = `
           INSERT INTO form_submissions (
             form_type, user_type, full_name, email_address, phone_number, gender,
-            address, city, state, pincode, message, selected_plan, agree_to_contact
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            address, city, state, pincode, message, selected_plan, agree_to_contact,
+            scheduled_date, scheduled_time
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
           RETURNING id
         `;
         const result = await pool.query(insertQuery, [
@@ -417,7 +420,9 @@ app.post('/api/send-contact-email', async (req, res) => {
           body.pincode || null,
           body.message || null,
           body.selectedPlan || null,
-          body.agreeToContact || false
+          body.agreeToContact || false,
+          body.scheduledDate || null,
+          body.scheduledTime || null
         ]);
         dbRecordId = result.rows[0].id;
         console.log('✅ Form submission saved to database with ID:', dbRecordId);

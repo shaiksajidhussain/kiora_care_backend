@@ -83,7 +83,7 @@ export default async function handler(
     });
     
     const formType = typeof req.query?.form_type === 'string' ? req.query.form_type : undefined;
-    let query = 'SELECT id, form_type, user_type, full_name, email_address, phone_number, gender, address, city, state, pincode, message, selected_plan, agree_to_contact, created_at FROM form_submissions';
+    let query = 'SELECT id, form_type, user_type, full_name, email_address, phone_number, gender, address, city, state, pincode, message, selected_plan, agree_to_contact, scheduled_date, scheduled_time, created_at FROM form_submissions';
     const params: string[] = [];
     
     if (formType === 'contact' || formType === 'schedule-test') {
