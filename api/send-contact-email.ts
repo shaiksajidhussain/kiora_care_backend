@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Resend } from 'resend';
+import { Pool } from 'pg';
 
 function setCorsHeaders(res: VercelResponse, origin: string | undefined) {
   const allowedOrigins = [
@@ -90,6 +91,86 @@ export default async function handler(
     console.log('Initializing Resend with API key (length):', resendApiKey.length);
     const resend = new Resend(resendApiKey);
     const targetEmail = process.env.TARGET_EMAIL || 'care@kiora.care';
+    const formType = body.formType === 'schedule-test' ? 'schedule-test' : 'contact';
+    
+    // Save to database if available
+    let dbRecordId = null;
+    if (process.env.DATABASE_URL) {
+      try {
+        const pool = new Pool({
+          connectionString: process.env.DATABASE_URL,
+          ssl: process.env.DATABASE_URL.includes('rds.amazonaws.com') ? { rejectUnauthorized: false } : false
+        });
+        
+        // Create table if it doesn't exist
+        const createTableQuery = `
+          CREATE TABLE IF NOT EXISTS form_submissions (
+            id SERIAL PRIMARY KEY,
+            form_type VARCHAR(50) NOT NULL,
+            user_type VARCHAR(50),
+            full_name VARCHAR(255) NOT NULL,
+            email_address VARCHAR(255) NOT NULL,
+            phone_number VARCHAR(50) NOT NULL,
+            gender VARCHAR(50),
+            address VARCHAR(512),
+            city VARCHAR(255),
+            state VARCHAR(255),
+            pincode VARCHAR(20),
+            message TEXT,
+            selected_plan VARCHAR(50),
+            agree_to_contact BOOLEAN DEFAULT false,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_form_submissions_email ON form_submissions(email_address);
+          CREATE INDEX IF NOT EXISTS idx_form_submissions_created_at ON form_submissions(created_at);
+          CREATE INDEX IF NOT EXISTS idx_form_submissions_form_type ON form_submissions(form_type);
+        `;
+        await pool.query(createTableQuery);
+        
+        // Add state/address columns if table already existed without them
+        try {
+          await pool.query('ALTER TABLE form_submissions ADD COLUMN state VARCHAR(255)');
+        } catch (e: any) {
+          if (e.code !== '42701') throw e; // Ignore if column already exists
+        }
+        try {
+          await pool.query('ALTER TABLE form_submissions ADD COLUMN address VARCHAR(512)');
+        } catch (e: any) {
+          if (e.code !== '42701') throw e; // Ignore if column already exists
+        }
+        
+        const insertQuery = `
+          INSERT INTO form_submissions (
+            form_type, user_type, full_name, email_address, phone_number, gender,
+            address, city, state, pincode, message, selected_plan, agree_to_contact
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          RETURNING id
+        `;
+        const result = await pool.query(insertQuery, [
+          formType,
+          body.userType || null,
+          body.fullName,
+          body.emailAddress,
+          body.phoneNumber,
+          body.gender || null,
+          body.address || null,
+          body.city || null,
+          body.state || null,
+          body.pincode || null,
+          body.message || null,
+          body.selectedPlan || null,
+          body.agreeToContact || false
+        ]);
+        dbRecordId = result.rows[0].id;
+        console.log('✅ Form submission saved to database with ID:', dbRecordId);
+        await pool.end();
+      } catch (dbError: any) {
+        console.error('⚠️ Failed to save to database (continuing with email):', dbError.message);
+        // Don't fail the request if database save fails, just log it
+      }
+    }
     
     const userTypeLabel = body.userType === 'doctor' ? 'Doctor' : body.userType === 'patient' ? 'Patient' : 'Not specified';
     
@@ -152,7 +233,13 @@ export default async function handler(
       }
 
       console.log('Email sent successfully:', emailResult.data);
-      return res.status(200).json({ message: 'Email sent successfully', data: emailResult.data });
+      return res.status(200).json({ 
+        message: 'Email sent successfully', 
+        data: {
+          submissionId: dbRecordId,
+          email: emailResult.data
+        }
+      });
     } catch (resendError) {
       console.error('Resend exception:', resendError);
       return res.status(500).json({ 
